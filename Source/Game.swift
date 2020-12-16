@@ -1,32 +1,21 @@
 import UIKit
 
-let BOARDCOLUMNS = 4
-let BOARDROWS = 4
-let HOMECOLUMNS = 4
-let HOMEROWS = 2
-let NUMSPOTS = BOARDCOLUMNS * BOARDROWS + HOMECOLUMNS * HOMEROWS
+let NUM_SPOTS = 52
 let EMPTY = -1
-let MAX_UNDO = 50
 
 // MARK:-
 
-struct CardStack {
+struct BoardData {
     var position = CGPoint()
-    var stack:[Int] = []
+    var index = Int()
+    var isAtHome = Bool()
 }
 
-// MARK:-
-
 struct GameData {
-    var board = Array(repeating:CardStack(), count: NUMSPOTS)
+    var board = Array(repeating:BoardData(), count: NUM_SPOTS)
     var shuffleCount = Int()
     
-    mutating func reset() {
-        shuffleCount = 0
-        for i in 0 ..< NUMSPOTS { board[i].stack.removeAll() }
-    }
-    
-    func isStackEmpty(_ boardIndex:Int) -> Bool { return board[boardIndex].stack.count == 0 }
+    mutating func reset() { shuffleCount = -1 } // -1 = offset the +1 in shuffle()
 }
 
 var gd = GameData()
@@ -34,9 +23,6 @@ var gd = GameData()
 // MARK:-
 
 class Game {
-    var cIndex = Int()  // card index
-    var bIndex = Int()  // source board index
-    var dIndex = Int()  // destination board index
     var finishedSession:Bool = true
     var score = Int()
     
@@ -44,137 +30,131 @@ class Game {
     var dealDelay:TimeInterval = 0
     
     init() {
-        cards.setNumberOfDecks(2)
+        cards.setNumberOfDecks(0)
         
-        var index = 0
-        
-        for r:Int in 0 ..< BOARDROWS {
-            for c:Int in 0 ..< BOARDCOLUMNS {
-                gd.board[index].position.x = 50 + cardXpos + CGFloat(c) * cardXpos
-                gd.board[index].position.y = 20 + CGFloat(r) * cardYpos
-                index += 1
-            }
-        }
-        
-        for r:Int in 0 ..< HOMEROWS {
-            for c:Int in 0 ..< HOMECOLUMNS {
-                gd.board[index].position.x = 50 + cardXpos + CGFloat(c) * cardXpos
-                gd.board[index].position.y = 50 + cardYpos * 4 + CGFloat(r) * cardYpos
-                index += 1
-            }
+        for index in 0 ..< NUM_SPOTS {
+            gd.board[index].position.x = 20 + CGFloat(rank(index)) * cardXpos
+            gd.board[index].position.y = 20 + CGFloat(suit(index)) * cardYpos
         }
     }
     
+    func rank(_ index:Int) -> Int { return index % 13 }
+    func suit(_ index:Int) -> Int { return index / 13 }
+    func isFirstColumn(_ index:Int) -> Bool { return rank(index) == 0 }
+    func isEmptyPosition(_ index:Int) -> Bool { return gd.board[index].index == EMPTY }
+    
     // MARK:-
-
+    
+    func moveCard(_ index:Int, _ delay:TimeInterval, _ setDoneFlag:Bool = false) {
+        if setDoneFlag { self.finishedSession = true }
+        
+        if !isEmptyPosition(index) {
+            UIView.animate(withDuration: 0.1, delay: delay, options: .curveLinear, animations: {
+                cards.setPosition(gd.board[index].index, gd.board[index].position)
+            }, completion: { (complete: Bool) in } )
+        }
+    }
+    
     func newGame() {
         if !finishedSession { return } // must wait until previous session is finished
         finishedSession = false
         
         gd.reset()
-        resetUndo()
-        cards.shuffle()
-        vc.updateShuffleButton()
         
-        dealDelay = 0
-        var index = 0
-        
-        // move All Cards To Deal Pile
-        UIView.animate(withDuration: 0.3, delay: dealDelay, options: .curveLinear, animations: {
+        // move All Cards To deal pile
+        UIView.animate(withDuration: 0.3, delay: 0, options: .curveLinear, animations: {
             for i in 0 ..< NUM_CARDS {
                 cards.setPosition(i, dealPosition)
                 cards.setZ(i, i)
             }
         }, completion: { (complete: Bool) in
-            
-            // board cards:  6 cards each
-            for _ in 0 ..< 6 {
-                for x in 0 ..< BOARDCOLUMNS {
-                    for y in 0 ..< BOARDROWS {
-                        self.addCardToBoard(index,x,y, false)
-                        index += 1
-                        self.dealDelay += self.DEAL_DELAY
-                    }
-                }
-            }
-            
-            // home cards: 1 card each
-            var count = HOMEROWS * HOMECOLUMNS
-            
-            for y in 0 ..< HOMEROWS {
-                for x in 0 ..<  HOMECOLUMNS {
-                    count -= 1
-                    self.addCardToHome(index,x,y, count == 0)
-                    index += 1
-                    self.dealDelay += self.DEAL_DELAY
-                }
-            }
+            // move All Cards To board positions (except Aces)
+            for i in 0 ..< NUM_SPOTS {
+                gd.board[i].index = (self.rank(i) == 0) ? EMPTY : i }
 
-            self.updateScore()
+            self.shuffleCards()
         }
         )
-    }
-    
-    func addCard(
-        _ index:Int,
-        _ cardIndex:Int,
-        _ delay:TimeInterval,
-        _ setDoneFlag:Bool = false)
-    {
-        gd.board[index].stack.append(cardIndex)
-        cards.setZ(cardIndex, gd.board[index].stack.count)
-        
-        UIView.animate(withDuration: 0.1, delay: delay, options: .curveLinear, animations: {
-            cards.setPosition(cardIndex, gd.board[index].position)
-        }, completion: { (complete: Bool) in
-            if setDoneFlag { self.finishedSession = true }
-        }
-        )
-    }
-    
-    func addCardToBoard(_ cardIndex:Int, _ column:Int, _ row:Int, _ setDoneFlag:Bool = false) {
-        let index = column + row * BOARDCOLUMNS
-        addCard(index,cardIndex,dealDelay,setDoneFlag)
-    }
-    
-    func addCardToHome(_ cardIndex:Int, _ column:Int, _ row:Int, _ setDoneFlag:Bool = false) {
-        let index = BOARDCOLUMNS * BOARDROWS + column + row * HOMECOLUMNS
-        addCard(index,cardIndex,dealDelay,setDoneFlag)
     }
     
     // MARK:-
     
-    func cardIndexOfTopOfStack(_ boardIndex:Int) -> Int {
-        if gd.isStackEmpty(boardIndex) { return EMPTY }
-        return gd.board[boardIndex].stack.last!
+    func updateIsAtHomeMarkers() {
+        var targetSuit = Int()
+        var isPartOfGroup = Bool()
+        
+        for i in 0 ..< NUM_SPOTS { gd.board[i].isAtHome = false }
+        
+        for i in 0 ..< NUM_SPOTS {
+            if isFirstColumn(i) {   // must be a '2'
+                isPartOfGroup = false
+                if isEmptyPosition(i) { continue }
+
+                let card = gd.board[i].index
+                
+                if rank(card) == 1 { // a '2'
+                    gd.board[i].isAtHome = true
+                    isPartOfGroup = true
+                    targetSuit = suit(card)
+                    score += 1
+                }
+            }
+            else {
+                if !isPartOfGroup { continue }
+                if isEmptyPosition(i) {
+                    isPartOfGroup = false
+                    continue
+                }
+
+                let card = gd.board[i].index
+                
+                // must be same suit and 1 higher than card to the left
+                if (rank(card) != rank(i)+1) || (suit(card) != targetSuit) {
+                    isPartOfGroup = false
+                }
+                else {
+                    gd.board[i].isAtHome = true
+                    score += 1
+                }
+            }
+        }
     }
     
-    func isLegalToDropCardAtIndex(_ cardIndex:Int, _ boardIndex:Int) -> Bool {
-        if boardIndex == EMPTY { return false }
+    func shuffleCards() {
+        updateIsAtHomeMarkers()
         
-        // cannot drop to empty board position
-        if gd.isStackEmpty(boardIndex) { return false }
-        
-        let c1 = cards.cardData[cardIndex] // card we are moving
-        let c2 = cards.cardData[cardIndexOfTopOfStack(boardIndex)] // card on top of destination stack
-        
-        // can only drop on same suit
-        if c1.suit != c2.suit { return false }
-        
-        // home piles only accept in right order
-        if boardIndex >= NUMSPOTS-8 && boardIndex < NUMSPOTS-4 { // Kings
-            if c1.rank != c2.rank-1 { return false }
-        }
-        if boardIndex >= NUMSPOTS-4 { // Aces
-            if c1.rank != c2.rank+1 { return false }
+        // shuffle cards not at home
+        for _ in 0 ..< 1000 {
+            let i1 = Int.random(in: 0 ..< NUM_SPOTS)
+            let i2 = Int.random(in: 0 ..< NUM_SPOTS)
+            
+            if !gd.board[i1].isAtHome && !gd.board[i2].isAtHome {
+                let t = gd.board[i1].index
+                gd.board[i1].index = gd.board[i2].index
+                gd.board[i2].index = t
+            }
         }
         
-        // must have neighboring rank
-        let diff = abs(c1.rank - c2.rank)
-        if diff == 1 { return true }
-        if diff == 12 && boardIndex < NUMSPOTS-8 { return true } // wrap around from ace -> king, king -> ace except home piles
+        dealDelay = 0
+        for i in 0 ..< NUM_SPOTS {
+            self.moveCard(i,self.dealDelay, i == NUM_SPOTS-1)
+            self.dealDelay += self.DEAL_DELAY
+        }
         
-        return false
+        updateScore()
+        gd.shuffleCount += 1
+        vc.updateShuffleButton()
+    }
+    
+    // MARK:-
+    
+    func updateScore() {
+        updateIsAtHomeMarkers()
+        
+        score = 0
+        for i in 0 ..< NUM_SPOTS { if gd.board[i].isAtHome { score += 1 }}
+        
+        vc.updateScore()
     }
     
     // MARK:-
@@ -183,309 +163,78 @@ class Game {
         let yMargin = CGFloat(50)
         var rect = CGRect(x:0, y:0, width:cardXS, height:cardYS + yMargin * 2)
         
-        for boardIndex in 0 ..< NUMSPOTS {
-            if !gd.isStackEmpty(boardIndex) {
-                rect.origin = gd.board[boardIndex].position
-                rect.origin.y -= yMargin
-                
-                if rect.contains(pt) { return boardIndex }
-            }
+        for boardIndex in 0 ..< NUM_SPOTS {
+            rect.origin = gd.board[boardIndex].position
+            rect.origin.y -= yMargin
+            if rect.contains(pt) { return boardIndex }
         }
         
         return EMPTY
     }
-    
-    // MARK:-
-    
-    var touchBeganPoint = CGPoint()
-    
-    func touchesBegan(_ pt:CGPoint) {
-        bIndex = determineBoardIndex(pt)
-        
-        if bIndex != EMPTY {
-            // must leave at least one card in home piles
-            if bIndex >= NUMSPOTS - 8 && gd.board[bIndex].stack.count == 1 { bIndex = EMPTY; return  }
-            
-            cIndex = cardIndexOfTopOfStack(bIndex)
-            cards.setZ(cIndex,200) // ontop of all other cards while moving
-            touchBeganPoint = pt
-        }
-    }
-    
-    func touchesMoved(_ pt:CGPoint) {
-        if bIndex == EMPTY { return }
-        
-        if (abs(pt.x-touchBeganPoint.x) + abs(pt.y-touchBeganPoint.y)) > 10.0 {
-            let dx = pt.x - touchBeganPoint.x
-            let dy = pt.y - touchBeganPoint.y
-            cards.setDeltaPosition(cIndex,dx,dy)
-        }
-    }
-    
-    func touchesEnded(_ pt:CGPoint) {
-        if bIndex == EMPTY { return }
-        dIndex = determineBoardIndex(pt)
-        
-        performCardMove()
-    }
-    
-    func performCardMove() {
-        if !isLegalToDropCardAtIndex(cIndex,dIndex) {
-            cards.goBackHome(cIndex)
-        }
-        else {
-            copytoUndo()
-            
-            gd.board[dIndex].stack.append(cIndex)   // move card to destination stack
-            gd.board[bIndex].stack.removeLast()     // remove card from source stack
-            
-            cards.setPosition(cIndex, gd.board[dIndex].position)
-            
-            updateUndoButton()
-            updateZOrder()
-            updateScore()
-        }
-        
-        bIndex = EMPTY
-       // debug()
-    }
-    
-    // MARK:-
-    
-    func hint() {
-        var hintCount = 0
-        var hintDelay:TimeInterval = 0.1
-        
-        for i in 0 ..< NUMSPOTS {
-            let c1 = cardIndexOfTopOfStack(i)
-            if c1 == EMPTY { continue }
-            
-            for j in i+1 ..< NUMSPOTS {
-                let c2 = cardIndexOfTopOfStack(j)
-                if c2 == EMPTY { continue }
-                if !isLegalToDropCardAtIndex(c1,j) { continue }
-                
-                func animateMove(_ x:CGFloat, _ y:CGFloat) {
-                    UIView.animate(withDuration: 0.05, delay: hintDelay, options: .curveLinear, animations: {
-                        cards.setDeltaPosition(c1,x,y)
-                        cards.setDeltaPosition(c2,x,y)
-                    }, completion: nil )
-                }
-                
-                animateMove(30,30)
-                hintDelay += 0.2
-                
-                animateMove(0,0)
-                hintDelay += 0.3
-                
-                hintCount += 1
-            }
-        }
-        
-        if hintCount == 0 { alert("No moves", "\nShuffle if possible")  }
-    }
-    
-    // MARK:- tap to move selected card to home pile
-    
-    func tapMove(_ pt:CGPoint, _ baseIndex:Int) {
-        bIndex = determineBoardIndex(pt)
-        if bIndex == EMPTY { return }
-        
-        let cardIndex = cardIndexOfTopOfStack(bIndex)
-        let card = cards.cardData[cardIndex]
-        dIndex = baseIndex - card.suit
-        
-        print("move %d - %d",bIndex,dIndex)
-        
-        performCardMove()
-    }
+
+    // MARK:- tap
     
     func tap(_ pt:CGPoint) {
-        bIndex = determineBoardIndex(pt)
-        if bIndex == EMPTY { return }
-        let cardIndex = cardIndexOfTopOfStack(bIndex)
-        let card = cards.cardData[cardIndex]
+        func animateMove(_ newBoardIndex:Int, _ oldBoardIndex:Int) {
+            gd.board[newBoardIndex].index = gd.board[oldBoardIndex].index
+            gd.board[oldBoardIndex].index = EMPTY
 
-        // drop on Aces pile?
-        let d1 = NUMSPOTS - 1 - card.suit
-        if isLegalToDropCardAtIndex(cardIndex,d1) {
-            dIndex = d1
-            performCardMove()
+            let newPosition = gd.board[newBoardIndex].position
+            let oldPosition = gd.board[oldBoardIndex].position
+            let cardIndex = gd.board[newBoardIndex].index
+            cards.setPosition(cardIndex, newPosition)
+            cards.setDeltaPosition(cardIndex, oldPosition.x - newPosition.x, oldPosition.y - newPosition.y)
+            cards.goBackHome(cardIndex)
+        }
+
+        let boardIndex = determineBoardIndex(pt)
+        if boardIndex == EMPTY { return }       // tapped off the board region
+        
+        if isEmptyPosition(boardIndex) {        // tapped on empty position. move correct card to this position
+            if !isFirstColumn(boardIndex) {     // Not 1st column (they must tap on desired '2' to move to 1st column)
+                let nIndex = boardIndex-1       // board index to the left of tapped position
+                if  isEmptyPosition(nIndex) { return }      // must hold a card
+                
+                let nRank = rank(gd.board[nIndex].index)    // rank and suit of the neighboring card
+                let nSuit = suit(gd.board[nIndex].index)
+                let target = nSuit * 13 + nRank + 1         // index of card to fill the tapped empty position
+                
+                // find card
+                for oldBoardIndex in 0 ..< NUM_SPOTS {
+                    if gd.board[oldBoardIndex].index == target {
+                        animateMove(boardIndex,oldBoardIndex)
+                        break
+                    }
+                }
+            }
+            
+            updateScore()
             return
         }
-
-        // drop on Kings pile?
-        let d2 = NUMSPOTS - 5 - card.suit
-        if isLegalToDropCardAtIndex(cardIndex,d2) {
-            dIndex = d2
-            performCardMove()
-        }
-    }
-    
-    var isShowingAlert:Bool = false
-    
-    func longPress(_ pt:CGPoint) {   // long press for list of cards in stack
-        if isShowingAlert { return }
-        isShowingAlert = true
         
-        let index = determineBoardIndex(pt)
-        if index == EMPTY { return }
+        // tapped on a card. move it to correct empty position
+        let nRank = rank(gd.board[boardIndex].index)    // rank and suit of the tapped card
+        let nSuit = suit(gd.board[boardIndex].index)
+        let target = nSuit * 13 + nRank - 1             // look for an empty spot with this card to the left
         
-        // started a move session by mistake as well. put card back to home position
-        cIndex =  cardIndexOfTopOfStack(index)
-        cards.goBackHome(cIndex)
-        
-        var str = String()
-        
-        let count = gd.board[index].stack.count
-        for i in 0 ..< count {
-            let card = cards.cardData[gd.board[index].stack[count-1-i]]
-            str = str + name(card.suit,card.rank) + "\n"
-        }
-        
-        alert("Cards in Pile",str)
-    }
-    
-    func updateZOrder() {
-        for i in 0 ..< NUMSPOTS {
-            for m in 0 ..< gd.board[i].stack.count {
-                cards.setZ(gd.board[i].stack[m],m)
-            }
-        }
-    }
-    
-    func updateScore() {
-        score = 0
-        for i in NUMSPOTS-8 ..< NUMSPOTS {
-            score += gd.board[i].stack.count
-        }
-
-        vc.updateScore()
-    }
-    
-    // MARK:- rotate cards in tableau stacks
-    
-    func shuffle() {
-        var delay:TimeInterval = 0.1
-        
-        for i in 0 ..< NUMSPOTS - 8 {  // not for home piles
-            let count = gd.board[i].stack.count
-            if count > 1 {
-                let t = gd.board[i].stack[0]
-                
-                func animateMove(_ x:CGFloat, _ y:CGFloat) {
-                    UIView.animate(withDuration: 0.2, delay: delay, options: .curveLinear, animations: {
-                        cards.setDeltaPosition(t,x,y)
-                    }, completion: nil )
+        // find empty spot
+        for newBoardIndex in 0 ..< NUM_SPOTS {
+            if !isEmptyPosition(newBoardIndex) { continue }
+            
+            if isFirstColumn(newBoardIndex) {  // empty spot is 1st column. can only hold a '2'
+                if nRank == 1 {
+                    animateMove(newBoardIndex,boardIndex)
+                    break
                 }
-            
-                for m in 0 ..< count-1 { gd.board[i].stack[m] = gd.board[i].stack[m+1] }
-                gd.board[i].stack[count-1] = t
-                
-                animateMove(0,300)
-                delay += 0.01
-                
-                animateMove(0,0)
-                delay += 0.001
             }
-        }
-        
-        updateZOrder()
-        
-        gd.shuffleCount += 1
-        vc.updateShuffleButton()
-        
-        //print("shuffle")
-        //debug()
-    }
-    
-    // MARK:-
-    
-    var undoIndex = 0
-    var undoCount = 0
-    var undoMemory = Array(repeating:GameData(), count: MAX_UNDO)
-    
-    func resetUndo() {
-        undoIndex = 0
-        undoCount = 0
-        vc.enableUndoButton(false)
-    }
-    
-    func copyGameData(_ src:GameData, _ dest:inout GameData) {
-        for i in 0 ..< NUMSPOTS {
-            dest.board[i] = src.board[i]
-        }
-    }
-    
-    func copytoUndo() {
-        copyGameData(gd, &undoMemory[undoIndex])
-        undoIndex += 1
-        if undoIndex == MAX_UNDO {
-            undoIndex = 0
-        }
-        
-        undoCount += 1
-        if undoCount == MAX_UNDO {
-            undoCount = MAX_UNDO-1
-        }
-    }
-    
-    func undo() {
-        if undoCount > 0 {
-            undoCount -= 1
-            
-            undoIndex -= 1
-            if undoIndex < 0 {
-                undoIndex = MAX_UNDO-1
-            }
-            
-            copyGameData(undoMemory[undoIndex], &gd)
-            
-            // reposition cards
-            for i in 0 ..< NUMSPOTS {
-                for s in 0 ..< gd.board[i].stack.count {
-                    let index = gd.board[i].stack[s]
-                    
-                    UIView.animate(withDuration: 0.1, delay: 0.1, options: .curveLinear, animations: {
-                        cards.setPosition(index, gd.board[i].position)
-                        cards.setZ(index,s)
-                    }, completion: nil
-                    )
+            else {
+                if gd.board[newBoardIndex-1].index == target {
+                    animateMove(newBoardIndex,boardIndex)
+                    break
                 }
             }
         }
         
-        updateUndoButton()
-        updateZOrder()
-    }
-    
-    func updateUndoButton() {
-        vc.enableUndoButton(undoCount > 0)
-    }
-    
-    func alert(_ title:String, _ message:String) {
-        var alertController:UIAlertController! = nil
-        alertController = UIAlertController(title:title, message:message, preferredStyle: .alert)
-
-        let okAction = UIAlertAction(title: "OK", style: .cancel) { (action:UIAlertAction!) in self.isShowingAlert = false }
-        alertController.addAction(okAction)
-
-        vc.present(alertController, animated: true, completion:nil)
-    }
-    
-    func debug() {
-        print("---------------------------------")
-        for i in 0 ..< NUMSPOTS {
-            
-            var str = String(format:"%d (%d) : ",i,gd.board[i].stack.count)
-            
-            for s in 0 ..< gd.board[i].stack.count {
-                let card = cards.cardData[gd.board[i].stack[s]]
-                str = str + name(card.suit,card.rank) + ", "
-            }
-            
-            //str += "\n"
-            print(str)
-        }
+        updateScore()
     }
 }

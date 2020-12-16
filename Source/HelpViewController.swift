@@ -1,40 +1,22 @@
 import UIKit
 
 let help = """
-First, one King and one Ace of each suit are removed to form the
-bases for the foundations.
-The kings are placed on a row, while the aces are placed below the kings.
-The ninety-six remaining cards are dealt to the tableau
-as 16 piles of six cards each.
+The goal in Addiction Solitaire is to sort all four rows in ascending order:
+2 to K.
 
-The object is to move all the cards from the tableau to the foundations.
-The kings are built down by suit up to aces
-and the aces are built up, also by suit, to kings.
+Each row must be of the same suit.
 
-The top card of each pile is available to play
-on the foundations or around the tableau.
+After the deal, the Aces are removed to create 4 blank positions.
 
-Only one card can be moved at a time.
+Cards can be moved into blank positions one at a time.
 
-Building on the tableau is either up or down by suit
-and can go round-the-corner (placing a king over an ace and vice versa).
+Tap on an empty position to move the correct card there.
+Tap on a card to move it next to it's correct neighbor (if possible).
 
-Spaces are not filled.
+A Two of any suit can be placed into the leftmost column;
+once there, it sets the suit for the entire row.
 
-The cards can be shuffled three times.
-The bottom card of each pile in the tableau is placed on the top without
-disturbing the order of the other cards in the pile.
-
-The game is won when all 104 tableau cards are moved to the foundations.
-
-
-How to Move Cards
-
-Click/Drag the desired card to the destination pile.
-
-shortcut command: Tap to move card to home pile.
-
-Long press on pile for a list of all cards within.
+No card can be moved to the right of a King.
 """
 
 class HelpViewController: UIViewController {

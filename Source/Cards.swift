@@ -2,7 +2,7 @@ import UIKit
 
 let RANK = 13
 let SUIT = 4
-let DECKS = 2
+let DECKS = 1
 let NUM_CARDS = DECKS * SUIT * RANK
 
 var numSuits:Int = 4
@@ -75,28 +75,45 @@ class Cards
         }
     }
     
-    func setNumberOfDecks(_ style:Int) {  // 0,1,2 -> 1,2,4 suits
-        var index:Int = 0
-        for _ in 0 ..< DECKS {
-            for s in 0 ..< SUIT {
-                for r in 0 ..< RANK {
-                    switch style {
-                    case 0 : cardData[index].suit = 0       // one suit
-                    case 1 : cardData[index].suit = s & 1   // two suits (one black, one red)
-                    case 2 : cardData[index].suit = s       // all 4 suits
-                    default: cardData[index].suit = s
-                    }
-                    
-                    cardData[index].rank = r
-                    cardData[index].picIndex = cardData[index].suit * RANK + r
-                    
-                    cardData[index].view.image = cardPicture[cardData[index].picIndex]
+    // MARK:-
 
-                    index += 1
-                }
+    func setNumberOfDecks(_ style:Int) {  // style unused.  hardwired for a single deck
+        var index:Int = 0
+        
+        for s in 0 ..< SUIT {
+            for r in 0 ..< RANK {
+                cardData[index].suit = s
+                cardData[index].rank = r
+                cardData[index].picIndex = cardData[index].suit * RANK + r
+                cardData[index].view.image = cardPicture[cardData[index].picIndex]
+
+                index += 1
             }
         }
     }
+
+//    func setNumberOfDecks(_ style:Int) {  // 0,1,2 -> 1,2,4 suits  use this when DECKS == 4
+//        var index:Int = 0
+//        for _ in 0 ..< DECKS {
+//            for s in 0 ..< SUIT {
+//                for r in 0 ..< RANK {
+//                    switch style {
+//                    case 0 : cardData[index].suit = 0       // one suit
+//                    case 1 : cardData[index].suit = s & 1   // two suits (one black, one red)
+//                    case 2 : cardData[index].suit = s       // all 4 suits
+//                    default: cardData[index].suit = s
+//                    }
+//
+//                    cardData[index].rank = r
+//                    cardData[index].picIndex = cardData[index].suit * RANK + r
+//
+//                    cardData[index].view.image = cardPicture[cardData[index].picIndex]
+//
+//                    index += 1
+//                }
+//            }
+//        }
+//    }
 
     // MARK:-
     
@@ -116,55 +133,12 @@ class Cards
     }
     
     func goBackHome(_ index:Int) {
-        UIView.animate(withDuration: 0.3, delay:0, options: .curveLinear,
+        UIView.animate(withDuration: 0.2, delay:0, options: .curveLinear,
             animations: {
                 self.setPosition(index, self.cardData[index].homePosition)
             }, completion: { (complete: Bool) in
-                game.updateZOrder()
             }
     )
     }
-
-    // MARK:-
-    
-    func shuffle() {
-        for _ in 0 ..< 1000 {
-            let i1 = Int(arc4random_uniform(UInt32(NUM_CARDS)))
-            let i2 = Int(arc4random_uniform(UInt32(NUM_CARDS)))
-            
-            let t = cardData[i1]
-            cardData[i1] = cardData[i2]
-            cardData[i2] = t
-        }
-        
-        // set last 8 cards to the 4 Kings, 4 Aces
-        var destination = NUM_CARDS - 1
-        for ace in 0 ..< 4 {
-            let aceIndex = ace * 13
-            for i in 0 ..< NUM_CARDS - 1 {
-                if cardData[i].picIndex == aceIndex {
-                    let t = cardData[destination]
-                    cardData[destination] = cardData[i]
-                    cardData[i] = t
-                    destination -= 1
-                    break
-                }
-            }
-        }
-
-        for king in 0 ..< 4 {
-            let kingIndex = 12 + king * 13
-            for i in 0 ..< NUM_CARDS - 1 {
-                if cardData[i].picIndex == kingIndex {
-                    let t = cardData[destination]
-                    cardData[destination] = cardData[i]
-                    cardData[i] = t
-                    destination -= 1
-                    break
-                }
-            }
-        }
-    }
-
 }
 
